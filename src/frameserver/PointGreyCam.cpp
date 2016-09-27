@@ -442,7 +442,7 @@ void PointGreyCam<T>::setupPixelBinning(size_t x_bin, size_t y_bin)
 //    return 0;
 //}
 
-// TODO: Required??
+
 template <typename T>
 void PointGreyCam<T>::turnCameraOn()
 {
@@ -588,7 +588,7 @@ void PointGreyCam<T>::setupStrobeOutput(int strobe_pin)
     strobe.polarity = 1;
     strobe.delay = 0.0f;
     strobe.duration = 0.0f;
-    //camera_.WriteRegister(0x19D0, 0x80000001); // start strobe on Blackfly: needed for strobe output in my model --mmyros
+    camera_.WriteRegister(0x19D0, 0x80000001); // start strobe on Blackfly: needed for strobe output in my model --mmyros
 
     pg::Error error = camera_.SetStrobe(&strobe);
     if (error != pg::PGRERROR_OK)
@@ -888,10 +888,22 @@ void PointGreyCam<pg::GigECamera>::connectToCamera(int index)
     printCameraInfo();
 
     std::cout << "Restoring default acqusition settings...\n";
-
-    error = camera_.RestoreFromMemoryChannel(0);
-    if (error != pg::PGRERROR_OK)
-        throw (rte(error.GetDescription()));
+    unsigned int retries = 10;
+  
+    do {
+      std::this_thread::sleep_for(std::chrono::milliseconds(600));
+      error = camera_.RestoreFromMemoryChannel(0);
+      
+      if (error  != pg::PGRERROR_OK) {
+	// ignore register write errors, camera_ may not be responding to
+	// register reads during power-up
+      } 
+      retries--;
+    } while ((error  != pg::PGRERROR_OK) && retries > 0);
+    
+    //error = camera_.RestoreFromMemoryChannel(0);
+    //    if (error != pg::PGRERROR_OK)
+    //        throw (rte(error.GetDescription()));
 
     std::cout << "Default settings restored.\n";
 
@@ -1001,7 +1013,7 @@ void PointGreyCam<pg::GigECamera>::setupImageFormat(const std::vector<size_t> &r
     imageSettings.offsetY = roi_vec[1];
     imageSettings.height  = roi_vec[2];
     imageSettings.width   = roi_vec[3];
-    imageSettings.pixelFormat = std::get<PG_FROM>(pix_map_.at(pix_col_)); //pg::PIXEL_FORMAT_RAW8;
+    imageSettings.pixelFormat = pg::PIXEL_FORMAT_RAW8;
 
     std::cout << "ROI set to ["
               << roi_vec[0]
