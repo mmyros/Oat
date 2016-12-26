@@ -39,7 +39,7 @@ HSVDetector::HSVDetector(const std::string &frame_source_address,
     // Set defaults for the erode and dilate blocks
     // Cannot use initializer because if these are set to 0, erode_on or
     // dilate_on must be set to false
-    set_erode_size(0);
+    set_erode1_size(0);
     set_dilate_size(10);
 
     // Set required frame type
@@ -121,9 +121,12 @@ void HSVDetector::configure(const po::variables_map &vm)
     }
 
     // Erode size
-    int erode;
-    if (oat::config::getNumericValue<int>(vm, config_table, "erode", erode, 0))
-        set_erode_size(erode);
+    int erode1;int erode2;
+    if (oat::config::getNumericValue<int>(vm, config_table, "erode", erode1, 0))
+        set_erode1_size(erode1);
+
+    if (oat::config::getNumericValue<int>(vm, config_table, "erode", erode2, 0))
+        set_erode2_size(erode2);
 
     // Dilate size
     int dilate;
@@ -158,13 +161,18 @@ void HSVDetector::detectPosition(cv::Mat &frame, oat::Position2D &position)
                 cv::Scalar(h_min_, s_min_, v_min_),
                 cv::Scalar(h_max_, s_max_, v_max_),
                 threshold_frame_);
+ 
+
 
     // Filter the resulting threshold image
     if (erode_on_)
-        cv::erode(threshold_frame_, threshold_frame_, erode_element_);
+        cv::erode(threshold_frame_, threshold_frame_, erode1_element_);
 
     if (dilate_on_)
         cv::dilate(threshold_frame_, threshold_frame_, dilate_element_);
+
+    if (erode_on_)
+        cv::erode(threshold_frame_, threshold_frame_, erode2_element_);
 
     // Threshold frame will be destroyed by the transform below, so we need to use
     // it to form the frame that will be shown in the tuning window here
@@ -245,28 +253,45 @@ void HSVDetector::createTuningWindows()
                        OAT_POSIDET_MAX_OBJ_AREA_PIX,
                        &hsvDetectorMaxAreaSliderChangedCallback,
                        this);
-    cv::createTrackbar("ERODE",
+    cv::createTrackbar("ERODE 1",
                        tuning_image_title_,
-                       &erode_px_,
-                       50,
-                       &hsvDetectorErodeSliderChangedCallback,
+                       &erode1_px_,
+                       500,
+                       &hsvDetectorErode1SliderChangedCallback,
                        this);
     cv::createTrackbar("DILATE",
                        tuning_image_title_,
                        &dilate_px_,
-                       50,
+                       500,
                        &hsvDetectorDilateSliderChangedCallback,
+                       this);
+    cv::createTrackbar("ERODE 2",
+                       tuning_image_title_,
+                       &erode2_px_,
+                       500,
+                       &hsvDetectorErode2SliderChangedCallback,
                        this);
 
     tuning_windows_created_ = true;
 }
 
-void HSVDetector::set_erode_size(int value)
+void HSVDetector::set_erode1_size(int value)
 {
     if (value > 0) {
         erode_on_ = true;
-        erode_px_ = value;
-        erode_element_ = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(erode_px_, erode_px_));
+        erode1_px_ = value;
+        erode1_element_ = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(erode1_px_, erode1_px_));
+    } else {
+        erode_on_ = false;
+    }
+}
+
+void HSVDetector::set_erode2_size(int value)
+{
+    if (value > 0) {
+        erode_on_ = true;
+        erode2_px_ = value;
+        erode2_element_ = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(erode2_px_, erode2_px_));
     } else {
         erode_on_ = false;
     }
@@ -296,10 +321,15 @@ void hsvDetectorMaxAreaSliderChangedCallback(int value, void *object)
     hsv_detector->set_max_object_area(static_cast<double>(value));
 }
 
-void hsvDetectorErodeSliderChangedCallback(int value, void *object)
+void hsvDetectorErode1SliderChangedCallback(int value, void *object)
 {
     auto hsv_detector = static_cast<HSVDetector *>(object);
-    hsv_detector->set_erode_size(value);
+    hsv_detector->set_erode1_size(value);
+}
+void hsvDetectorErode2SliderChangedCallback(int value, void *object)
+{
+    auto hsv_detector = static_cast<HSVDetector *>(object);
+    hsv_detector->set_erode2_size(value);
 }
 
 void hsvDetectorDilateSliderChangedCallback(int value, void *object)

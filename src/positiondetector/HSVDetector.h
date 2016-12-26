@@ -63,7 +63,8 @@ public:
     void configure(const po::variables_map &vm) override;
 
     // Accessors (used for tuning GUI)
-    void set_erode_size(int erode_px);
+    void set_erode1_size(int erode1_px);
+    void set_erode2_size(int erode2_px);
     void set_dilate_size(int dilate_px);
     void set_min_object_area(double value) { min_object_area_ = value; }
     void set_max_object_area(double value) { max_object_area_ = value; }
@@ -71,11 +72,11 @@ public:
 private:
 
     // Sizes of the erode and dilate blocks
-    int erode_px_ {0}, dilate_px_ {10};
+    int erode1_px_ {0}, erode2_px_ {0}, dilate_px_ {10};
     bool erode_on_ {false}, dilate_on_ {false};
 
     // Internal matricies
-    cv::Mat threshold_frame_, erode_element_, dilate_element_;
+    cv::Mat threshold_frame_, erode1_element_, erode2_element_, dilate_element_;
 
     // HSV threshold values
     int h_min_ {0}, h_max_ {256};
@@ -100,7 +101,8 @@ private:
 // Tuning GUI callbacks
 void hsvDetectorMinAreaSliderChangedCallback(int value, void *);
 void hsvDetectorMaxAreaSliderChangedCallback(int value, void *);
-void hsvDetectorErodeSliderChangedCallback(int value, void *);
+void hsvDetectorErode1SliderChangedCallback(int value, void *);
+void hsvDetectorErode2SliderChangedCallback(int value, void *);
 void hsvDetectorDilateSliderChangedCallback(int value, void *);
 
 }       /* namespace oat */
