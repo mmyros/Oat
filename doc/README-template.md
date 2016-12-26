@@ -547,26 +547,32 @@ oat decorate raw -p pos1 pos2
 * `frame` streams are compressed and saved as individual video files (
   [H.264](http://en.wikipedia.org/wiki/H.264/MPEG-4_AVC) compression format AVI
   file).
-* `position` streams are combined into a single [JSON](http://json.org/) file.
-  Position files have the following structure:
+* `position` streams saved to separate [JSON](http://json.org/) file. Optionally,
+  they can be saved to [numpy binary files](https://docs.scipy.org/doc/numpy/neps/npy-format.html).
+  JSON position files have the following structure:
 
 ```
-{oat-version: X.X},
-{header: {timestamp: YYYY-MM-DD-hh-mm-ss},
-         {sample_rate_hz: X.X},
-         {sources: [ID_1, ID_2, ..., ID_N]} }
-{positions: [ [ID_1: position, ID_2: position, ..., ID_N: position ],
-              [ID_1: position, ID_2: position, ..., ID_N: position ],
-
-              [ID_1: position, ID_2: position, ..., ID_N: position ] }
+{
+    oat-version: X.X,
+    header: {
+        timestamp: YYYY-MM-DD-hh-mm-ss,
+        sample_rate_hz: X.X
+    },
+    positions: [
+        position, 
+        position, 
+        ..., 
+        position 
+    ]
 }
 ```
 where each `position` object is defined as:
 
 ```
 {
-  samp: Int,                  | Sample number
-  unit: Int,                  | Enum spcifying length units (0=pixels, 1=meters)
+  tick: Int,                  | Sample number
+  usec: Int,                  | Microseconds associated with current sample number
+  unit: Int,                  | Enum specifying length units (0=pixels, 1=meters)
   pos_ok: Bool,               | Boolean indicating if position is valid
   pos_xy: [Double, Double],   | Position x,y values
   vel_ok: Bool,               | Boolean indicating if velocity is valid
@@ -577,12 +583,14 @@ where each `position` object is defined as:
   reg: String                 | Region tag
 }
 ```
-Data fields are only populated if the values are valid. For instance, in the
-case that only object position is valid, and the object velocity, heading, and
-region information are not calculated, an example position data point would
-look like this:
+When using JSON and the `consise-file` option is specified, data fields are
+only populated if the values are valid. For instance, in the case that only
+object position is valid, and the object velocity, heading, and region
+information are not calculated, an example position data point would look like
+this:
 ```
-{ samp: 501,
+{ tick: 501,
+  usec: 50100000,
   unit: 0,
   pos_ok: True,
   pos_xy: [300.0, 100.0],
@@ -591,10 +599,27 @@ look like this:
   reg_ok: False }
 ```
 
-All streams are saved with a single recorder have the same base file name and
-save location (see usage). Of course, multiple recorders can be used in
-parallel to (1) parallelize the computational load of video compression, which
-tends to be quite intense and (2) save to multiple locations simultaneously.
+When using binary file format, position entries occupy single elements of a
+numpy structured array with the following
+[`dtype`](https://docs.scipy.org/doc/numpy/reference/generated/numpy.dtype.html):
+```
+[('tick', '<u8'), 
+ ('usec', '<u8'), 
+ ('unit', '<i4'), 
+ ('pos_ok', 'i1'), 
+ ('pos_xy', '<f8', (2,)), 
+ ('vel_ok', 'i1'), 
+ ('vel_xy', '<f8', (2,)), 
+ ('head_ok', 'i1'), 
+ ('head_xy', '<f8', (2,)), 
+ ('reg_ok', 'i1'), 
+ ('reg', 'S10')]
+```
+
+Multiple recorders can be used in parallel to (1) parallelize the computational
+load of video compression, which tends to be quite intense and (2) save to
+multiple locations simultaneously (3) to save the same data stream multiple
+times in different formats.
 
 #### Signature
     position 0 --> |
@@ -631,6 +656,11 @@ oat record -s raw
 # Save frame stream 'raw' and positional stream 'pos' to Desktop
 # directory and prepend the timestamp and the word 'test' to each filename
 oat record -s raw -p pos -d -f ~/Desktop -n test
+
+# Save the pos stream twice, one binary and one JSON file, in the current
+# directory
+oat record -p pos &
+oat record -p pos -b
 ```
 
 \newpage
@@ -670,10 +700,10 @@ oat-posisock-udp-help
 #### Example
 ```bash
 # Reply to requests for positions from the 'pos' stream to port 5555 using TCP
-oat posisock rep pos tcp://*:5555
+oat posisock rep pos -e tcp://*:5555
 
 # Asychronously publish positions from the 'pos' stream to port 5556 using TCP
-oat posisock pub pos tcp://*:5556
+oat posisock pub pos -e tcp://*:5556
 
 # Dump positions from the 'pos' stream to stdout
 oat posisock std pos
@@ -1313,16 +1343,16 @@ RJ45 ------------
         - I need to come up with a series of scripts that configure and run
           components in odd and intensive, but legal, ways to ensure sample
           sychronization is maintained, graceful exits, etc
-- [ ] Position type correction
-    - It might be a good idea to generalize the concept of a position to a
-      multi-positional element
-    - For things like the `oat-decorate`, `oat-posicom`, and potentially
+- [ ] Position type correction and generalization to 3D pose
+    - ~~It might be a good idea to generalize the concept of a position to a
+      multi-positional element~~
+    - ~~For things like the `oat-decorate`, `oat-posicom`, and potentially
       `oat-detect`, this could increase performance and decrease user script
       complexity if multiple targets common detection features needed to be
-      tracked at once.
-    - Down side is that it potentially increases code complexity and would
-      require a significant refactor.
-    - Additionally, position detection might no longer be stateless. E.g. think
+      tracked at once.~~
+    - ~~Down side is that it potentially increases code complexity and would
+      require a significant refactor.~~
+    - ~~Additionally, position detection might no longer be stateless. E.g. think
       of the case when two detected objects cross paths. In order to ID the
       objects correctly in subsequent detections, the path of the objects would
       need to be taken into account (and there is not guarantee this result
@@ -1330,26 +1360,19 @@ RJ45 ------------
       groups' with annoymous position members. This would get us back to
       stateless detection. However, it would make the concept of position
       combining hard to define (although that is even true now is just a design
-      choice, really).
+      choice, really).~~
     - EDIT: Additionally, there should certainly not be `Position2D` vs
       `Position3D`. Only `Position` which provides 3d specificaiton with Z axis
       defaulting to 0.
-- [ ] [CBOR](http://tools.ietf.org/html/rfc7049) binary messaging and data
-  files
-    - CBOR is a simple binary encoding scheme for JSON
-    - It would be great to allow the option to save CBOR files (`oat-record`)
-      or send CBOR messages (`oat-posisock`) by creating a CBOR `Writer`
-      acceptable to by `Position` datatype's serialization function.
-    - And, while I'm at it, Position's should be forced to support
-      serialization, so this should be a pure abstract member of the base
-      class.
-    - Another option that is very similar is messagepack. Don't know which is
-      better.
+    - EDIT: In fact, positions should simply be generalize two a 3D pose. I've
+      started a branch to do this.
 - [ ] `oat-framefilt undistort`
     - Very slow. Needs an OpenGL or CUDA implementation
     - User supplied frame rotation occurs in a separate step from
       un-distortion.  Very inefficient. Should be able to combine rotation with
       camera matrix to make this a lot faster.
+    - EDIT: Also should provide an `oat-posifilt` version which only applies
+      undistortion to position rather than the entire frame.
 - [ ] Should components always involve a user IO thread?
     - For instance, some generalization of `oat-record ... --interactive`
     - For instance, it would be nice if PURE SINKs (e.g. `oat frameserve`)
@@ -1358,7 +1381,11 @@ RJ45 ------------
     - For instance, it would be nice to be able to re-acquire the background
       image in `oat-framefilt bsub` without have to restart the program.
     - Where should this come from? Command line input?
+    - EDIT: Shea and I have been brainstorming ways to use unix sockets to
+      allow general runtime control of oat components. This will doing things
+      like easy, in general.
 - [ ] Add position history toggle in `oat-decorate`
+    - Answer will come with solution to TODO above this one.
 - [ ] Type deduction in shmem Tokens
     - Sources should have a static method for checking the token type of a
       given address.
